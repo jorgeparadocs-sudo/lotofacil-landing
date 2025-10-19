@@ -32,7 +32,7 @@ canvas { border:1px dashed #ccc; border-radius: 10px; }
 <section id="home" class="pt-24 pb-16 text-center bg-gradient-to-b from-indigo-100 to-white">
   <div class="max-w-2xl mx-auto">
     <h2 class="text-4xl font-bold mb-4 text-indigo-700">Conferência Automática da Lotofácil</h2>
-    <p class="text-gray-700 text-lg mb-6">Envie a imagem do seu bilhete e descubra instantaneamente seus jogos e acertos. Tudo direto no navegador.</p>
+    <p class="text-gray-700 text-lg mb-6">Envie a imagem do seu bilhete e descubra instantaneamente seus jogos e acertos. Tudo direto no navegador, sem envio para servidores.</p>
     <a href="#app" class="bg-indigo-600 text-white px-6 py-3 rounded-lg text-lg font-semibold hover:bg-indigo-700 transition">Conferir meu bilhete</a>
   </div>
 </section>
@@ -42,9 +42,9 @@ canvas { border:1px dashed #ccc; border-radius: 10px; }
   <div class="max-w-5xl mx-auto px-6">
     <h3 class="text-2xl font-bold text-center mb-10 text-indigo-700">Como Funciona</h3>
     <div class="grid md:grid-cols-3 gap-10 text-center">
-      <div><div class="text-indigo-600 text-4xl mb-3">📷</div><h4 class="font-semibold mb-2">Upload do Bilhete</h4><p>Envie uma imagem do seu bilhete da Lotofácil. O sistema detecta automaticamente os números dos jogos.</p></div>
-      <div><div class="text-indigo-600 text-4xl mb-3">🧠</div><h4 class="font-semibold mb-2">Leitura Inteligente</h4><p>Usamos <strong>Tesseract.js</strong> e <strong>jsQR</strong> para reconhecer números diretamente da imagem, sem enviar nada para servidores externos.</p></div>
-      <div><div class="text-indigo-600 text-4xl mb-3">🏆</div><h4 class="font-semibold mb-2">Resultados Imediatos</h4><p>O sistema identifica os jogos encontrados e exibe os números formatados automaticamente.</p></div>
+      <div><div class="text-indigo-600 text-4xl mb-3">📷</div><h4 class="font-semibold mb-2">Upload do Bilhete</h4><p>Envie uma imagem nítida do seu bilhete da Lotofácil. O sistema detecta automaticamente os números.</p></div>
+      <div><div class="text-indigo-600 text-4xl mb-3">🧠</div><h4 class="font-semibold mb-2">Leitura Inteligente</h4><p>Usamos <strong>Tesseract.js</strong> e <strong>jsQR</strong> diretamente no seu navegador para identificar os jogos com segurança.</p></div>
+      <div><div class="text-indigo-600 text-4xl mb-3">🏆</div><h4 class="font-semibold mb-2">Resultados Imediatos</h4><p>O sistema mostra os jogos identificados no formato padronizado, prontos para conferência.</p></div>
     </div>
   </div>
 </section>
@@ -61,9 +61,13 @@ canvas { border:1px dashed #ccc; border-radius: 10px; }
         <button id="clear" class="border border-gray-300 text-gray-600 px-4 py-2 rounded">Limpar</button>
       </div>
 
-      <div><p class="text-sm text-gray-500 mb-1">Imagem do Bilhete</p><canvas id="canvas1" height="250" class="mx-auto"></canvas></div>
+      <div>
+        <p class="text-sm text-gray-500 mb-1">Imagem do Bilhete</p>
+        <canvas id="canvas1" height="250" class="mx-auto"></canvas>
+      </div>
 
       <div id="output" class="mt-6 space-y-2 text-sm font-mono text-gray-800 bg-gray-50 p-4 rounded border border-gray-200 text-left"></div>
+      <div id="loading" class="text-indigo-600 font-semibold mt-4 hidden">⏳ Processando OCR... aguarde</div>
     </div>
   </div>
 </section>
@@ -81,57 +85,116 @@ const runEl=document.getElementById('run');
 const clearEl=document.getElementById('clear');
 const canvas1=document.getElementById('canvas1');
 const output=document.getElementById('output');
+const loading=document.getElementById('loading');
 let currentImageData=null;
 
-function draw(c,img){const cx=c.getContext('2d');c.width=img.width;c.height=img.height;cx.putImageData(img,0,0);}
+function draw(c,img){
+  const cx=c.getContext('2d');
+  c.width=img.width;
+  c.height=img.height;
+  cx.putImageData(img,0,0);
+}
+
 function toGray(imgData){
- const {data,width,height}=imgData;const out=new Uint8ClampedArray(data.length);
- for(let i=0;i<data.length;i+=4){const v=0.299*data[i]+0.587*data[i+1]+0.114*data[i+2];out[i]=out[i+1]=out[i+2]=v;out[i+3]=255;}return new ImageData(out,width,height);
+  const {data,width,height}=imgData;
+  const out=new Uint8ClampedArray(data.length);
+  for(let i=0;i<data.length;i+=4){
+    const v=0.299*data[i]+0.587*data[i+1]+0.114*data[i+2];
+    out[i]=out[i+1]=out[i+2]=v;
+    out[i+3]=255;
+  }
+  return new ImageData(out,width,height);
 }
+
 async function loadImageData(file){
- if(file.type==='application/pdf'){
-   const ab=await file.arrayBuffer();const pdf=await pdfjsLib.getDocument({data:ab}).promise;
-   const page=await pdf.getPage(1);const vp=page.getViewport({scale:2});
-   const c=document.createElement('canvas');const cx=c.getContext('2d');c.width=vp.width;c.height=vp.height;
-   await page.render({canvasContext:cx,viewport:vp}).promise;
-   return cx.getImageData(0,0,c.width,c.height);
- }else{
-   const bmp=await createImageBitmap(file);const c=document.createElement('canvas');const cx=c.getContext('2d');
-   c.width=bmp.width;c.height=bmp.height;cx.drawImage(bmp,0,0);
-   return cx.getImageData(0,0,c.width,c.height);
- }
+  if(file.type==='application/pdf'){
+    const ab=await file.arrayBuffer();
+    const pdf=await pdfjsLib.getDocument({data:ab}).promise;
+    const page=await pdf.getPage(1);
+    const vp=page.getViewport({scale:2});
+    const c=document.createElement('canvas');
+    const cx=c.getContext('2d');
+    c.width=vp.width;
+    c.height=vp.height;
+    await page.render({canvasContext:cx,viewport:vp}).promise;
+    return cx.getImageData(0,0,c.width,c.height);
+  }else{
+    const bmp=await createImageBitmap(file);
+    const c=document.createElement('canvas');
+    const cx=c.getContext('2d');
+    c.width=bmp.width;
+    c.height=bmp.height;
+    cx.drawImage(bmp,0,0);
+    return cx.getImageData(0,0,c.width,c.height);
+  }
 }
+
 async function runOCR(img){
- const c=document.createElement('canvas');c.width=img.width;c.height=img.height;c.getContext('2d').putImageData(img,0,0);
- const dataUrl=c.toDataURL('image/png');
- const { data } = await Tesseract.recognize(dataUrl,'por',{ tessedit_pageseg_mode:6, tessedit_char_whitelist:'0123456789' });
- return data.text || '';
+  const c=document.createElement('canvas');
+  c.width=img.width;
+  c.height=img.height;
+  c.getContext('2d').putImageData(img,0,0);
+  const dataUrl=c.toDataURL('image/png');
+  const { data } = await Tesseract.recognize(dataUrl,'por',{
+    tessedit_pageseg_mode:6,
+    tessedit_char_whitelist:'0123456789'
+  });
+  return data.text || '';
 }
+
 function parseGames(txt){
- const t=(txt.match(/\\d{2}/g)||[]).map(x=>parseInt(x));const games=[];let buf=[];
- for(const n of t){if(n>=1&&n<=25){buf.push(n);if(buf.length===15){games.push(buf.slice());buf=[];}}else{if(buf.length>=15&&buf.length<=20)games.push(buf.slice());buf=[];}}
- if(buf.length>=15&&buf.length<=20)games.push(buf);return games;
+  const t=(txt.match(/\\d{2}/g)||[]).map(x=>parseInt(x));
+  const games=[];let buf=[];
+  for(const n of t){
+    if(n>=1&&n<=25){
+      buf.push(n);
+      if(buf.length===15){games.push(buf.slice());buf=[];}
+    }else{
+      if(buf.length>=15&&buf.length<=20)games.push(buf.slice());
+      buf=[];
+    }
+  }
+  if(buf.length>=15&&buf.length<=20)games.push(buf);
+  return games;
 }
+
 function renderGames(gs){
- output.innerHTML='';
- if(!gs.length){output.innerHTML='<span class=\"text-red-500\">Não foi possível identificar jogos.</span>';return;}
- gs.forEach((g,i)=>{const div=document.createElement('div');div.textContent='Jogo '+(i+1)+': '+g.map(x=>String(x).padStart(2,'0')).join(',');output.appendChild(div);});
+  output.innerHTML='';
+  if(!gs.length){
+    output.innerHTML='<span class="text-red-500">Não foi possível identificar jogos.</span>';
+    return;
+  }
+  gs.forEach((g,i)=>{
+    const div=document.createElement('div');
+    div.textContent='Jogo '+(i+1)+': '+g.map(x=>String(x).padStart(2,'0')).join(',');
+    output.appendChild(div);
+  });
 }
 
 fileEl.addEventListener('change',async()=>{
- const f=fileEl.files?.[0];if(!f)return;
- currentImageData=await loadImageData(f);
- draw(canvas1,currentImageData);
+  const f=fileEl.files?.[0];
+  if(!f)return;
+  currentImageData=await loadImageData(f);
+  draw(canvas1,currentImageData);
 });
+
 runEl.addEventListener('click',async()=>{
- if(!currentImageData){alert('Envie uma imagem primeiro.');return;}
- const gray=toGray(currentImageData);
- const text=await runOCR(gray);
- const games=parseGames(text);
- renderGames(games);
+  if(!currentImageData){alert('Envie uma imagem primeiro.');return;}
+  output.innerHTML='';
+  loading.classList.remove('hidden');
+  const gray=toGray(currentImageData);
+  const text=await runOCR(gray);
+  loading.classList.add('hidden');
+  const games=parseGames(text);
+  renderGames(games);
 });
-clearEl.addEventListener('click',()=>{output.innerHTML='';canvas1.getContext('2d').clearRect(0,0,canvas1.width,canvas1.height);fileEl.value='';currentImageData=null;});
+
+clearEl.addEventListener('click',()=>{
+  output.innerHTML='';
+  canvas1.getContext('2d').clearRect(0,0,canvas1.width,canvas1.height);
+  fileEl.value='';
+  currentImageData=null;
+});
 </script>
 </body>
 </html>
-<!-- rebuild -->
