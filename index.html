@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Lotofácil - Conferência Automática</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
+<script src="https://unpkg.com/pdfjs-dist@4.4.168/build/pdf.min.js"></script>
+<script src="https://unpkg.com/tesseract.js@5/dist/tesseract.min.js"></script>
+<style>
+html { scroll-behavior: smooth; }
+section { scroll-margin-top: 80px; }
+canvas { border:1px dashed #ccc; border-radius: 10px; }
+</style>
+</head>
+<body class="bg-gray-50 text-gray-800 font-sans">
+
+<!-- Navbar -->
+<nav class="fixed top-0 left-0 right-0 bg-white shadow z-50">
+  <div class="max-w-6xl mx-auto px-6 py-3 flex justify-between items-center">
+    <h1 class="text-xl font-bold text-indigo-600">Lotofácil OCR</h1>
+    <div class="space-x-6">
+      <a href="#home" class="hover:text-indigo-600">Início</a>
+      <a href="#como" class="hover:text-indigo-600">Como Funciona</a>
+      <a href="#app" class="hover:text-indigo-600">Ferramenta</a>
+    </div>
+  </div>
+</nav>
+
+<!-- Hero -->
+<section id="home" class="pt-24 pb-16 text-center bg-gradient-to-b from-indigo-100 to-white">
+  <div class="max-w-2xl mx-auto">
+    <h2 class="text-4xl font-bold mb-4 text-indigo-700">Conferência Automática da Lotofácil</h2>
+    <p class="text-gray-700 text-lg mb-6">Envie a imagem ou PDF do seu bilhete e descubra instantaneamente seus acertos. Leitura via OCR e QR Code, tudo direto no seu navegador.</p>
+    <a href="#app" class="bg-indigo-600 text-white px-6 py-3 rounded-lg text-lg font-semibold hover:bg-indigo-700 transition">Conferir meu bilhete</a>
+  </div>
+</section>
+
+<!-- Como Funciona -->
+<section id="como" class="py-16 bg-white">
+  <div class="max-w-5xl mx-auto px-6">
+    <h3 class="text-2xl font-bold text-center mb-10 text-indigo-700">Como Funciona</h3>
+    <div class="grid md:grid-cols-3 gap-10 text-center">
+      <div>
+        <div class="text-indigo-600 text-4xl mb-3">📷</div>
+        <h4 class="font-semibold mb-2">Upload do Bilhete</h4>
+        <p>Envie uma imagem ou PDF do seu bilhete da Lotofácil. O sistema detecta automaticamente QR Codes ou textos.</p>
+      </div>
+      <div>
+        <div class="text-indigo-600 text-4xl mb-3">🧠</div>
+        <h4 class="font-semibold mb-2">Leitura Inteligente</h4>
+        <p>Usamos <strong>Tesseract.js</strong> e <strong>jsQR</strong> para extrair números e jogos diretamente do bilhete.</p>
+      </div>
+      <div>
+        <div class="text-indigo-600 text-4xl mb-3">🏆</div>
+        <h4 class="font-semibold mb-2">Conferência de Resultados</h4>
+        <p>Compare automaticamente seus jogos com os resultados oficiais da Caixa e veja quantos acertos teve.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Ferramenta -->
+<section id="app" class="py-16 bg-indigo-50">
+  <div class="max-w-5xl mx-auto px-6">
+    <h3 class="text-2xl font-bold text-center mb-8 text-indigo-700">Ferramenta de Conferência</h3>
+
+    <div class="bg-white rounded-xl shadow p-6">
+      <div class="mb-4 flex flex-col md:flex-row gap-4 items-center">
+        <input id="file" type="file" accept="image/*,application/pdf" class="border p-2 rounded w-full md:w-auto"/>
+        <button id="run" class="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded">Rodar OCR</button>
+        <button id="clear" class="border border-gray-300 text-gray-600 px-4 py-2 rounded">Limpar</button>
+      </div>
+
+      <div class="grid md:grid-cols-2 gap-6">
+        <div><p class="text-sm text-gray-500 mb-1">Imagem Original</p><canvas id="canvas1" height="250"></canvas></div>
+        <div><p class="text-sm text-gray-500 mb-1">Pré-processado</p><canvas id="canvas2" height="250"></canvas></div>
+      </div>
+
+      <div id="output" class="mt-6 space-y-2 text-sm font-mono text-gray-800 bg-gray-50 p-4 rounded border border-gray-200"></div>
+    </div>
+  </div>
+</section>
+
+<!-- Rodapé -->
+<footer class="bg-white border-t mt-16 py-6 text-center text-sm text-gray-600">
+  Desenvolvido por <span class="text-indigo-600 font-semibold">Jorge Farias</span> • © 2025
+</footer>
+
+<script>
+if(window['pdfjsLib']) pdfjsLib.GlobalWorkerOptions.workerSrc='https://unpkg.com/pdfjs-dist@4.4.168/build/pdf.worker.min.js';
+
+const fileEl=document.getElementById('file');
+const runEl=document.getElementById('run');
+const clearEl=document.getElementById('clear');
+const canvas1=document.getElementById('canvas1');
+const canvas2=document.getElementById('canvas2');
+const output=document.getElementById('output');
+let currentImageData=null;
+
+async function loadImageData(file){
+ if(file.type==='application/pdf'){
+   const ab=await file.arrayBuffer();
+   const pdf=await pdfjsLib.getDocument({data:ab}).promise;
+   const page=await pdf.getPage(1);
+   const vp=page.getViewport({scale:2});
+   const c=document.createElement('canvas');const cx=c.getContext('2d');
+   c.width=vp.width;c.height=vp.height;
+   await page.render({canvasContext:cx,viewport:vp}).promise;
+   return cx.getImageData(0,0,c.width,c.height);
+ }else{
+   const bmp=await createImageBitmap(file);
+   const c=document.createElement('canvas');const cx=c.getContext('2d');
+   c.width=bmp.width;c.height=bmp.height;cx.drawImage(bmp,0,0);
+   return cx.getImageData(0,0,c.width,c.height);
+ }
+}
+
+function draw(c,img){const cx=c.getContext('2d');c.width=img.width;c.height=img.height;cx.putImageData(img,0,0);}
+function preprocess(img,contrast=1.6,win=10,C=8){
+ const {data,width,height}=img;
+ const gray=new Uint8ClampedArray(width*height);
+ for(let i=0,j=0;i<data.length;i+=4,j++){let v=0.299*data[i]+0.587*data[i+1]+0.114*data[i+2];v=Math.max(0,Math.min(255,(v-128)*contrast+128));gray[j]=v;}
+ const out=new Uint8ClampedArray(width*height*4);const rad=win;const get=(x,y)=>gray[y*width+x];
+ for(let y=0;y<height;y++){for(let x=0;x<width;x++){let sum=0,cnt=0;for(let dy=-rad;dy<=rad;dy++){for(let dx=-rad;dx<=rad;dx++){const xx=x+dx,yy=y+dy;if(xx>=0&&yy>=0&&xx<width&&yy<height){sum+=get(xx,yy);cnt++;}}}const mean=sum/Math.max(1,cnt);const v=get(x,y)<(mean-C)?0:255;const idx=(y*width+x)*4;out[idx]=out[idx+1]=out[idx+2]=v;out[idx+3]=255;}}return new ImageData(out,width,height);}
+async function readQR(img){try{const code=jsQR(img.data,img.width,img.height,{inversionAttempts:'attemptBoth'});return code?code.data:null;}catch(e){return null;}}
+async function runOCR(img){const c=document.createElement('canvas');c.width=img.width;c.height=img.height;c.getContext('2d').putImageData(img,0,0);const dataUrl=c.toDataURL('image/png');const {data}=await Tesseract.recognize(dataUrl,'por',{tessedit_char_whitelist:'0123456789'});return data.text;}
+function parseGames(txt){const t=(txt.match(/\\d{2}/g)||[]).map(x=>parseInt(x));const games=[];let buf=[];for(const n of t){if(n>=1&&n<=25){buf.push(n);if(buf.length===15){games.push(buf.slice());buf=[];}}else{if(buf.length>=15&&buf.length<=20)games.push(buf.slice());buf=[];}}if(buf.length>=15&&buf.length<=20)games.push(buf);return games;}
+function renderGames(gs){output.innerHTML='';if(!gs.length){output.textContent='Nenhum jogo identificado.';return;}gs.forEach((g,i)=>{const div=document.createElement('div');div.textContent='Jogo '+(i+1)+': '+g.map(x=>String(x).padStart(2,'0')).join(',');output.appendChild(div);});}
+
+fileEl.addEventListener('change',async()=>{
+ const f=fileEl.files?.[0];if(!f)return;
+ currentImageData=await loadImageData(f);
+ draw(canvas1,currentImageData);
+ const bin=preprocess(currentImageData);
+ draw(canvas2,bin);
+ const qr=await readQR(currentImageData);
+ if(qr){output.innerHTML='<div class=\"text-green-600 font-semibold\">QR detectado!</div>';}
+});
+
+runEl.addEventListener('click',async()=>{
+ if(!currentImageData){alert('Envie uma imagem primeiro.');return;}
+ const bin=preprocess(currentImageData);
+ draw(canvas2,bin);
+ const text=await runOCR(bin);
+ const games=parseGames(text);
+ renderGames(games);
+});
+
+clearEl.addEventListener('click',()=>{output.innerHTML='';canvas1.getContext('2d').clearRect(0,0,canvas1.width,canvas1.height);canvas2.getContext('2d').clearRect(0,0,canvas2.width,canvas2.height);fileEl.value='';currentImageData=null;});
+</script>
+</body>
+</html>
